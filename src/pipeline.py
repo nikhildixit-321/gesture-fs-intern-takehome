@@ -13,6 +13,17 @@ Useful docs:
 """
 
 import os
+import sys
+import argparse
+from typing import Callable, Any, Dict, List
+
+# Fix for printing emojis on Windows terminals
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
+# Ensure 'src' is in the Python path when running directly
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from src.knowledge_base import build_knowledge_base
 
@@ -58,7 +69,7 @@ Answer:"""
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TODO 1: Implement ask_question
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def ask_question(vector_store, llm, question: str) -> dict:
+def ask_question(vector_store: Any, llm: Callable, question: str) -> Dict[str, Any]:
     """Retrieve relevant chunks and generate an answer.
 
     Steps:
@@ -80,14 +91,19 @@ def ask_question(vector_store, llm, question: str) -> dict:
             "answer"  -> str: the generated answer
             "sources" -> list[str]: the chunk texts that were retrieved
     """
-    # TODO: implement this (~6-8 lines)
-    raise NotImplementedError("TODO 1: Implement ask_question")
+    docs = vector_store.similarity_search(question, k=3)
+    sources = [doc.page_content for doc in docs]
+    context = "\n".join(sources)
+    prompt = PROMPT_TEMPLATE.format(context=context, question=question)
+    result = llm(prompt)
+    answer = result[0]["generated_text"].strip()
+    return {"answer": answer, "sources": sources}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TODO 2: Complete the interactive loop
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-def main():
+def main() -> None:
     """Interactive Q&A loop.
 
     Steps:
@@ -100,10 +116,52 @@ def main():
          - Calls ask_question() with their input
          - Prints the retrieved sources and the answer
     """
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    parser = argparse.ArgumentParser(description="Interactive Q&A CLI")
+    parser.add_argument("--query", type=str, help="Single question mode")
+    args = parser.parse_args()
 
-    # TODO: implement this (~10-12 lines)
-    raise NotImplementedError("TODO 2: Complete the interactive loop")
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "data")
+    if not os.path.isdir(data_dir):
+        print(f"Error: Data directory not found at {data_dir}")
+        return
+
+    try:
+        vector_store = build_knowledge_base(data_dir)
+        llm = get_llm()
+    except Exception as e:
+        print(f"Error initializing: {e}")
+        return
+
+    if args.query:
+        if not args.query.strip():
+            print("Error: query cannot be empty")
+            return
+        result = ask_question(vector_store, llm, args.query)
+        print("\n📄 Sources:")
+        for i, src in enumerate(result["sources"], 1):
+            print(f"  {i}. {src.strip()}")
+        print(f"\n💬 Answer: {result['answer']}")
+        return
+
+    print("Welcome to the Q&A CLI. Type 'quit' to exit.")
+    while True:
+        try:
+            q = input("\n> ")
+            if q.strip().lower() in ("quit", "exit"):
+                break
+            if not q.strip():
+                continue
+            
+            result = ask_question(vector_store, llm, q)
+            print("\n📄 Sources:")
+            for i, src in enumerate(result["sources"], 1):
+                print(f"  {i}. {src.strip()}")
+            print(f"\n💬 Answer: {result['answer']}")
+        except (KeyboardInterrupt, EOFError):
+            print()
+            break
+        except Exception as e:
+            print(f"Error processing question: {e}")
 
 
 if __name__ == "__main__":

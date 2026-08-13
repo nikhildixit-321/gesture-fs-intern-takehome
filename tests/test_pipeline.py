@@ -78,6 +78,13 @@ class TestRetrieval:
             "Different questions should retrieve different chunks"
         )
 
+    def test_retrieves_faq_info(self, vector_store, llm):
+        result = ask_question(vector_store, llm, "What is the onboarding process?")
+        sources_text = " ".join(result["sources"]).lower()
+        assert "onboard" in sources_text or "process" in sources_text, (
+            "Sources should contain onboarding-related content"
+        )
+
 
 # ────────────────────────────────
 # Answer generation
